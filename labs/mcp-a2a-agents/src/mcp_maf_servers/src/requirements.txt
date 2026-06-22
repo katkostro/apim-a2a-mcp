@@ -1,5 +1,7 @@
 # MCP + Microsoft Agent Framework
 mcp>=1.9.0
+# TODO: pin to the exact working version after the first successful image build
+# (e.g. agent-framework-core==<version>); it's a pre-release, so versions can shift.
 agent-framework-core
 
 openai
