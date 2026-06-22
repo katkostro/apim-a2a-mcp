@@ -413,7 +413,7 @@ module a2aOncallAgentA2AAPI 'src/a2a_servers/apim-api/v2/api.bicep' = {
   }
 }
 
-module WeatherAgentMCPAPI 'src/mcp_sk_servers/apim-mcp/mcp-api.bicep' = {
+module WeatherAgentMCPAPI 'src/mcp_maf_servers/apim-mcp/mcp-api.bicep' = {
   name: 'WeatherAgentMCPAPI'
   params: {
     apimServiceName: apimService.name
@@ -423,7 +423,7 @@ module WeatherAgentMCPAPI 'src/mcp_sk_servers/apim-mcp/mcp-api.bicep' = {
   }
 }
 
-module OncallAgentMCPAPI 'src/mcp_sk_servers/apim-mcp/mcp-api.bicep' = {
+module OncallAgentMCPAPI 'src/mcp_maf_servers/apim-mcp/mcp-api.bicep' = {
   name: 'OncallAgentMCPAPI'
   params: {
     apimServiceName: apimService.name

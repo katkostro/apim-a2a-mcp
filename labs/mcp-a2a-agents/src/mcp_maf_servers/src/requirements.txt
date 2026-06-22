@@ -1,0 +1,6 @@
+# MCP + Microsoft Agent Framework
+mcp>=1.9.0
+agent-framework-core
+
+openai
+uvicorn

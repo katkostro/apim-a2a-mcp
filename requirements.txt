@@ -27,4 +27,4 @@ azure-mgmt-apimanagement
 
 # MCP Labs
 mcp==1.21.2
-semantic-kernel[mcp]==1.33.0
+agent-framework-core

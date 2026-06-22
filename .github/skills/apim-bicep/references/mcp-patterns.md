@@ -220,7 +220,7 @@ resource mcp 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
 
 Creates an MCP-compatible API with custom SSE and message endpoints.
 
-**Source**: [labs/mcp-a2a-agents/src/mcp_sk_servers/apim-mcp/mcp-api.bicep](../../../../labs/mcp-a2a-agents/src/mcp_sk_servers/apim-mcp/mcp-api.bicep)
+**Source**: [labs/mcp-a2a-agents/src/mcp_maf_servers/apim-mcp/mcp-api.bicep](../../../../labs/mcp-a2a-agents/src/mcp_maf_servers/apim-mcp/mcp-api.bicep)
 
 ```bicep
 @description('The name of the API Management service')

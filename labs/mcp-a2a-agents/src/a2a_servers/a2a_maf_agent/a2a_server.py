@@ -119,5 +119,5 @@ import uvicorn
 
 app = build_app()                  # Starlette ASGI application
 
-if __name__ == "__main__":           # Only when you run “python a2a_sk_server.py”
+if __name__ == "__main__":           # Only when you run “python a2a_server.py”
     uvicorn.run(app, host="0.0.0.0", port=10020)
