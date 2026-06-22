@@ -8,10 +8,9 @@ services:
   - MCP
   - Azure Container Apps
   - Microsoft Agent Framework
-  - Autogen
   - A2A Protocol
-shortDescription: Multi-agent system using Agent-to-Agent protocol with MCP servers and heterogeneous orchestrators.
-detailedDescription: Playground to experiment with A2A-enabled agents with Model Context Protocol through Azure API Management. Demonstrates heterogeneous multi-agent systems with agents built using Microsoft Agent Framework and Autogen, communicating through APIM for authentication and authorization. Includes MCP servers for oncall service, weather, and GitHub issues with OAuth integration.
+shortDescription: Multi-agent system using Agent-to-Agent protocol with MCP servers orchestrated with Microsoft Agent Framework.
+detailedDescription: Playground to experiment with A2A-enabled agents with Model Context Protocol through Azure API Management. Demonstrates a multi-agent system with agents built using Microsoft Agent Framework, communicating through APIM for authentication and authorization. Includes MCP servers for oncall service, weather, and GitHub issues with OAuth integration.
 tags: []
 authors:
   - nourshaker-msft
@@ -28,9 +27,9 @@ This lab includes the following MCP servers:
 - Basic weather service: provide tools to get cities for a given country and retrieve random weather information for a specified city.
 - GitHub Issues MCP Server: provide tools to authenticate on GitHub using the APIM Credential Manager, retrieves user information, and lists issues for a specified repository. This [sequence diagram](./diagrams/diagrams.md) explains the flow.
 
-MCP-enabled agents are then deployed within ACA (Azure Container Apps) as A2A agents, one built with Microsoft Agent Framework, and another with Autogen.
+MCP-enabled agents are then deployed within ACA (Azure Container Apps) as A2A agents, both built with Microsoft Agent Framework.
 
-This lab demonstrates the art of the possible of creating hetrogenous multi-agentic system with agents created using multiple orchestrators, and then allowing a single unifying protocol to communicate accross the through APIM for Authn/Authz
+This lab demonstrates the art of the possible of creating a multi-agentic system with agents orchestrated using Microsoft Agent Framework, and then allowing a single unifying protocol to communicate across them through APIM for Authn/Authz
 
 ### Prerequisites
 
@@ -60,7 +59,7 @@ Open [deploy-a2a-infra-assests.ipynb](deploy-a2a-infra-assests.ipynb) and run al
 
 Pick one (or both) of the following labs. Each one reads the deployment outputs from Step 1, builds the agent container images, deploys them to Azure Container Apps, and lets you interact with the agents.
 
-- **A2A Protocol lab** — [mcp-agent-as-a2a-server.ipynb](mcp-agent-as-a2a-server.ipynb): deploys two heterogeneous A2A agents (one built with **Microsoft Agent Framework**, one with **AutoGen**) and exercises agent-to-agent communication over the A2A protocol, including a CLI client.
+- **A2A Protocol lab** — [mcp-agent-as-a2a-server.ipynb](mcp-agent-as-a2a-server.ipynb): deploys two A2A agents (both built with **Microsoft Agent Framework**) and exercises agent-to-agent communication over the A2A protocol, including a CLI client.
 - **Agent-over-MCP lab** — [mcp-agent-as-mcp-server.ipynb](mcp-agent-as-mcp-server.ipynb): exposes the MCP-enabled agents as MCP servers and has them communicate agent-to-agent over MCP.
 
 #### Step 3 — (optional) Debug with MCP Inspector
