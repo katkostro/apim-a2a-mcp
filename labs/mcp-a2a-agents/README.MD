@@ -42,7 +42,30 @@ This lab demonstrates the art of the possible of creating hetrogenous multi-agen
 
 ### 🚀 Get started
 
-Proceed by opening the [Jupyter notebook](mcp-agent-as-a2a-server.ipynb), and follow the steps provided.
+Run the notebooks in the following order. Open each one in VS Code and execute the cells from top to bottom.
+
+#### Step 1 — Deploy the shared infrastructure (required first)
+
+Open [deploy-a2a-infra-assests.ipynb](deploy-a2a-infra-assests.ipynb) and run all cells. This notebook:
+
+1. Initializes the notebook variables (resource group, location, model deployment, etc.).
+2. Verifies the Azure CLI and the connected subscription.
+3. Creates the deployment using Bicep ([main.bicep](main.bicep)) — provisions API Management, Azure OpenAI, Log Analytics, and Application Insights.
+4. Builds and deploys the MCP tool servers (weather and oncall) to Azure Container Apps.
+5. Tests the connection to the MCP servers and lists the available tools.
+
+> The other lab notebooks depend on the outputs of this notebook, so it must complete successfully before continuing.
+
+#### Step 2 — Run a lab notebook
+
+Pick one (or both) of the following labs. Each one reads the deployment outputs from Step 1, builds the agent container images, deploys them to Azure Container Apps, and lets you interact with the agents.
+
+- **A2A Protocol lab** — [mcp-agent-as-a2a-server.ipynb](mcp-agent-as-a2a-server.ipynb): deploys two heterogeneous A2A agents (one built with **Microsoft Agent Framework**, one with **AutoGen**) and exercises agent-to-agent communication over the A2A protocol, including a CLI client.
+- **Agent-over-MCP lab** — [mcp-agent-as-mcp-server.ipynb](mcp-agent-as-mcp-server.ipynb): exposes the MCP-enabled agents as MCP servers and has them communicate agent-to-agent over MCP.
+
+#### Step 3 — (optional) Debug with MCP Inspector
+
+You can use the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) to test and debug the deployed MCP servers, as described in the deploy notebook.
 
 ### 🗑️ Clean up resources
 
