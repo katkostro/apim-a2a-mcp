@@ -1,7 +1,8 @@
 /**
  * @module openai-v1
- * @description This module defines the Azure Cognitive Services OpenAI resources using Bicep.
- * This is version 1 (v1) of the OpenAI Bicep module.
+ * @description This module defines the Azure AI Foundry (AI Services) resources using Bicep.
+ * The account is provisioned with kind 'AIServices' so model deployments are hosted on
+ * Azure AI Foundry. This is version 1 (v1) of the module.
  */
 
 // ------------------
@@ -57,7 +58,10 @@ resource cognitiveServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = [
   sku: {
     name: openAISku
   }
-  kind: 'OpenAI'
+  kind: 'AIServices'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     apiProperties: {
       statisticsEnabled: false
