@@ -7,11 +7,11 @@ categories:
 services:
   - MCP
   - Azure Container Apps
-  - Semantic Kernel
+  - Microsoft Agent Framework
   - Autogen
   - A2A Protocol
 shortDescription: Multi-agent system using Agent-to-Agent protocol with MCP servers and heterogeneous orchestrators.
-detailedDescription: Playground to experiment with A2A-enabled agents with Model Context Protocol through Azure API Management. Demonstrates heterogeneous multi-agent systems with agents built using Semantic Kernel and Autogen, communicating through APIM for authentication and authorization. Includes MCP servers for oncall service, weather, and GitHub issues with OAuth integration.
+detailedDescription: Playground to experiment with A2A-enabled agents with Model Context Protocol through Azure API Management. Demonstrates heterogeneous multi-agent systems with agents built using Microsoft Agent Framework and Autogen, communicating through APIM for authentication and authorization. Includes MCP servers for oncall service, weather, and GitHub issues with OAuth integration.
 tags: []
 authors:
   - nourshaker-msft
@@ -28,7 +28,7 @@ This lab includes the following MCP servers:
 - Basic weather service: provide tools to get cities for a given country and retrieve random weather information for a specified city.
 - GitHub Issues MCP Server: provide tools to authenticate on GitHub using the APIM Credential Manager, retrieves user information, and lists issues for a specified repository. This [sequence diagram](./diagrams/diagrams.md) explains the flow.
 
-MCP-enabled agents are then deployed within ACA (Azure Container Apps) as A2A agents, one built with Semantic Kernel, and another with Autogen.
+MCP-enabled agents are then deployed within ACA (Azure Container Apps) as A2A agents, one built with Microsoft Agent Framework, and another with Autogen.
 
 This lab demonstrates the art of the possible of creating hetrogenous multi-agentic system with agents created using multiple orchestrators, and then allowing a single unifying protocol to communicate accross the through APIM for Authn/Authz
 
