@@ -1,6 +1,0 @@
-{
-    "python.analysis.extraPaths": ["./shared"],
-    "[markdown]": {
-        "files.trimTrailingWhitespace": false
-    }
-}
