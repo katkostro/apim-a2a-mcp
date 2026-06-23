@@ -1,12 +1,40 @@
-# Citadel — Secure A2A + MCP Architecture
+# Citadel — Secure A2A + MCP with Governance-Grade Observability
 
 > A detailed walkthrough of how the **Citadel AI Governance Hub** lets agents and tools
 > talk to each other **securely** using **A2A** (agent-to-agent) and **MCP** (Model Context
-> Protocol), with **Azure API Management (APIM)** as the single governed gateway.
+> Protocol), with **Azure API Management (APIM)** as the single governed gateway — and how that
+> same gateway becomes the single emission point for **governance-grade telemetry** (see §7).
 >
 > Source workshop: <https://aka.ms/citadel-lab>
 > (`mohamedsaif/ai-hub-gateway-solution-accelerator`, branch `workshop`, folder `workshop/`).
->
+
+The [workshop](https://github.com/mohamedsaif/ai-hub-gateway-solution-accelerator/blob/workshop/workshop/readme.md) is organized into four **labs**. Each lab is a step in the guide; the hands-on labs run one or more Jupyter **notebooks** (`.ipynb` files).
+
+| Lab | What you do | Notebooks |
+|---|---|---|
+| **Lab 1** | Deploy Citadel to your Azure subscription (`azd up` + spoke script) | — |
+| **Lab 2** | Review the deployed services and configuration | — |
+| **Lab 3** | Run the validation notebooks (in order) | notebooks 1–6 |
+| **Lab 4** | Observability: metrics, logs, and telemetry | — |
+
+**Lab 3 notebooks** — run in order:
+
+| # | Notebook | File |
+|---|---|---|
+| 1 | LLM Backend Onboarding Runner | `1. llm-backend-onboarding-runner.ipynb` |
+| 2 | Universal LLM API — All-Models Tests | `2. citadel-universal-llm-api-all-models-tests.ipynb` |
+| 3 | Citadel Access Contracts Tests | `3. citadel-access-contracts-tests.ipynb` |
+| 4 | Citadel Agent Frameworks Tests | `4. citadel-agent-frameworks-tests.ipynb` |
+| 5 | Citadel PII Processing Tests | `5. citadel-pii-processing-tests.ipynb` |
+| 6 | Citadel Unified AI API Tests | `6. citadel-unified-ai-api-tests.ipynb` |
+
+**Optional notebooks** — run after notebooks 1–6; these are the **A2A** and **MCP** scenarios this document focuses on:
+
+| # | Notebook | File |
+|---|---|---|
+| 7 | Citadel Hosted Agent with AGT — build, deploy, and govern a Foundry hosted agent | `7. citadel-hosted-agent-with-agt.ipynb` |
+| 8 | Publish and Use an A2A Endpoint — expose a Foundry agent as a governed agent-to-agent endpoint | `8. publish-and-use-a2a-endpoint.ipynb` |
+| 9 | Publish and Use the HR MCP via APIM — publish and consume an MCP server through APIM | `9. publish-and-use-hr-mcp-via-apim.ipynb` |
 
 ---
 
@@ -27,7 +55,7 @@ topology:
 > implementation of **Layer 1 – Governance Hub** of the four-layer **AI Citadel Blueprint**
 > (Layer 1 Governance Hub → Layer 2 Agent Operations → Layer 3 Agent Identity → Layer 4 Security
 > Fabric). Layer 1 is the *runtime enforcement* plane: a centrally managed AI gateway (APIM) that
-> enforces identity validation, rate limiting, content filtering, and cost attribution, while spoke
+> enforces identity validation, rate limiting, and content filtering, while spoke
 > environments give each business unit autonomous development within guardrails.
 
 Everything an agent or client does — calling a model, calling another agent (A2A), or calling a
@@ -41,6 +69,7 @@ flowchart TB
         AOAI["AI Foundry / Azure OpenAI"]
         COSMOS["Cosmos DB<br/>(usage records)"]
         EH["Event Hub"]
+        LOGIC["Logic App<br/>(usage-ingestion)"]
         KV["Key Vault"]
         OBS["App Insights + Log Analytics"]
         VNET["VNet + Private Endpoints"]
@@ -49,12 +78,18 @@ flowchart TB
         SPOKEFND["AI Foundry account/project"]
         ACR["Container Registry"]
     end
+    DD["Datadog<br/>(optional external SIEM/APM — see §7.4)"]
     Client["Client / Agent"] --> APIM
     APIM --> AOAI
     APIM --> SPOKEFND
     APIM --> OBS
+    APIM -. secrets .- KV
     APIM -. private endpoint .- VNET
-    EH --> COSMOS
+    APIM -->|"set-llm-usage"| EH
+    EH --> LOGIC
+    LOGIC --> COSMOS
+    APIM -. "diagnostics (optional)" .-> DD
+    EH -. "usage forwarder (optional)" .-> DD
 ```
 
 ---
@@ -108,7 +143,7 @@ flowchart TB
     end
 
     subgraph Gateway["APIM — single governed gateway"]
-        A2AAPI["A2A APIs<br/>(JWT + sub key, rate limit)"]
+        A2AAPI["A2A APIs<br/>(sub key, rate limit)"]
         MCPAPI["MCP APIs<br/>(JWT + Mcp.Invoke role + sub key)"]
     end
 
@@ -133,8 +168,8 @@ flowchart TB
     MCPAPI -->|"authorized: Finance only"| FINT
     MCPAPI -->|"authorized: IT only"| ITT
 
-    %% denied cross-access (illustrative)
-    MCPAPI -. "denied: HR→Finance tools" .-> FINT
+    %% denied cross-access (illustrative) — HR agent's attempt, rejected at the gateway
+    HR -. "denied: HR→Finance tools" .-> FINT
 ```
 
 > **How the scoping is enforced:** each agent has its own managed identity + subscription. APIM's
@@ -147,7 +182,8 @@ flowchart TB
 
 Those two boxes are **the APIs you publish inside Azure API Management** — they are how APIM exposes
 and governs two different kinds of traffic. APIM has no native concept of "agent" or "tool"; you
-import each backend **as an API**, attach policies, and that API becomes the governed front door.
+import each backend **as an API**, attach policies, and that API becomes the governed front door —
+the enforceable **access contract** for that agent or tool.
 
 **A2A APIs (agent-to-agent)**
 
@@ -155,7 +191,7 @@ import each backend **as an API**, attach policies, and that API becomes the gov
   interface.
 - **Purpose:** let one agent (or a client app) **invoke another autonomous agent** — hand it a task
   and get a reasoned result back. This is the *horizontal* hop (peer ↔ peer).
-- **What APIM adds:** subscription-key + JWT validation inbound, rate limiting/quotas, and a
+- **What APIM adds:** subscription-key inbound, rate limiting/quotas, and a
   **managed-identity token** (`aud=https://ai.azure.com`) outbound — so APIM, not the caller,
   authenticates to the private Foundry backend.
 - **Shape:** the A2A protocol contract (agent card / task-style HTTP), imported via APIM's
@@ -168,7 +204,7 @@ import each backend **as an API**, attach policies, and that API becomes the gov
 - **Purpose:** let an agent reach its **tools, data, and actions** ("look up leave balance," "create
   ticket"). This is the *vertical* hop (agent → tools).
 - **What APIM adds:** JWT validation **plus** the `Mcp.Invoke` app-role check **plus** subscription
-  key (double auth), rate limiting (e.g. 5 calls/30s), and private routing to the tool backend.
+  key (double auth), rate limiting (e.g. 5 `tools/call`/30s), and private routing to the tool backend.
 - **Shape:** the MCP JSON-RPC contract, imported as an API so every tool call passes through policy.
 
 | | A2A API | MCP API |
@@ -181,7 +217,9 @@ import each backend **as an API**, attach policies, and that API becomes the gov
 They are kept as **separate API types** because they govern **different trust relationships and
 different authorization rules**. That separation is exactly what lets APIM say "Agent A may call
 Agent B (A2A) and may use the HR tools (MCP), but may **not** touch the Finance tools" — each API +
-subscription + role grant is scoped independently. In the diagram above, every solid line passes
+subscription + role grant is scoped independently. That per-agent grant (API + product/subscription +
+app-role) is precisely what Citadel calls an **access contract** (defined under
+*What an access contract is*, below). In the diagram above, every solid line passes
 through one of these two API types, which is how APIM stays the single governed choke point for both
 kinds of traffic.
 
@@ -189,7 +227,7 @@ The workshop demonstrates this across three notebooks:
 
 | Notebook | Role |
 |---|---|
-| `7. citadel-hosted-agent-with-agt.ipynb` | Build, deploy, and **govern** a Foundry hosted agent (AGT = agent governance + OpenTelemetry) |
+| `7. citadel-hosted-agent-with-agt.ipynb` | Build, deploy, and **govern** a Foundry hosted agent (AGT = **[Microsoft Agent Governance Toolkit](https://microsoft.github.io/agent-governance-toolkit/)** — policy, capability guard, audit trail, rogue detection, plus OpenTelemetry) |
 | `8. publish-and-use-a2a-endpoint.ipynb` | Expose a Foundry agent as a **governed A2A endpoint** through APIM |
 | `9. publish-and-use-hr-mcp-via-apim.ipynb` | Publish an **MCP tool server** through APIM and have a hosted agent consume it |
 
@@ -197,83 +235,30 @@ The workshop demonstrates this across three notebooks:
 
 ## 3. The A2A leg — how it works (notebook 8)
 
-**Goal:** run a Foundry agent, expose its incoming A2A endpoint, and publish it through APIM as a
-governed access contract — callable with just a subscription key, even though the Foundry account
-is private.
+**Goal:** run an agent, expose its incoming A2A endpoint, and publish it through APIM as a
+governed access contract — callable with just a subscription key, even though the agent's backend
+stays private. The specifics below are intentionally generic; the exact agent type, card paths,
+file names, role assignments, and policy values live in the workshop notebooks and the Citadel
+accelerator.
 
-### Steps
+### How it works (conceptually)
 
-1. **Create the agent** — a `PromptAgentDefinition` on `gpt-4.1` (mocked Contoso HR policy data)
-   on the Foundry `-0` account, resolved from the `azd` environment (no hardcoded names).
-2. **Enable the A2A endpoint** — PATCH the agent with:
-   - an `agent_card` (description, version, skills), and
-   - an `agent_endpoint` advertising `protocols: ["responses", "a2a"]`.
+The same pattern applies whether the agent is a Foundry-hosted agent or a containerized agent
+built with a framework such as Microsoft Agent Framework:
 
-   The card is published at well-known paths: `agentCard/v1.0` (current spec) and `agentCard/v0.3`
-   (older clients).
-3. **Lock it down** — the Foundry account's `publicNetworkAccess` is enabled only long enough to
-   create/enable the agent, then **re-disabled** → **private-only** posture.
-4. **Front it with APIM** — create an APIM API whose `serviceUrl` is the agent's A2A JSON-RPC
-   runtime URL, with operations:
-   - `POST /` (JSON-RPC), and
-   - `GET /agentCard/v1.0`, `GET /agentCard/v0.3`.
-
-   The API sets `subscriptionRequired: true` (header `Ocp-Apim-Subscription-Key`).
-5. **Backend auth via managed identity** — attach an API policy so APIM mints a backend token from
-   **its own managed identity** and forwards it. Callers never see a Foundry token:
-
-   ```xml
-   <policies>
-     <inbound>
-       <base />
-       <!-- APIM calls the agent's A2A backend with a token from its managed identity. -->
-       <authentication-managed-identity resource="https://ai.azure.com" />
-     </inbound>
-     <backend><base /></backend>
-     <outbound><base /></outbound>
-     <on-error><base /></on-error>
-   </policies>
-   ```
-
-   The APIM managed identity holds an Azure AI role (e.g. **Cognitive Services User**) on the
-   agent's Foundry account; `azd up` grants this. The notebook auto-detects system- vs
-   user-assigned identity and pins `client-id` when needed.
-6. **Wrap in an access contract** — deploy an APIM **product + subscription** (via
-   `apimOnboardService.bicep`). The product-scope policy enforces governance:
-
-   ```xml
-   <inbound>
-     <base />
-     <rate-limit calls="3" renewal-period="60" />
-     <!-- optional A2A message logging via <trace> to App Insights -->
-   </inbound>
-   ```
-
-   Optional **message logging** captures the A2A method, task id, correlation id, and (when
-   explicitly enabled) request/response bodies to **Application Insights** via the `<trace>` policy.
-   Streaming (`text/event-stream`) responses are recorded as metadata only to avoid breaking SSE.
-7. **Call it** — `GET agentCard/v1.0`, then `POST` an A2A JSON-RPC `message/send`, polling
-   `tasks/get` for async tasks. **This works even though the Foundry account is private**, because
-   APIM is VNet-integrated and reaches it over a **private endpoint**.
-
-### A2A sequence
-
-```mermaid
-sequenceDiagram
-    participant C as Caller / peer agent
-    participant A as APIM (A2A API + product)
-    participant F as Foundry agent (private)
-    C->>A: GET /agentCard/v1.0 (Ocp-Apim-Subscription-Key)
-    A->>A: Validate subscription key + rate limit
-    A->>F: GET card (MI token, aud=ai.azure.com, private endpoint)
-    F-->>A: Agent card
-    A-->>C: Agent card
-    C->>A: POST / JSON-RPC message/send (sub key)
-    A->>F: Forward with MI token (private endpoint)
-    F-->>A: result (message or async task)
-    A-->>C: result
-    Note over C,A: optional <trace> logs method/taskId/correlationId to App Insights
-```
+- **The agent publishes an A2A contract** — an *agent card* (its description, version, and skills)
+  plus a JSON-RPC endpoint that accepts A2A messages and tasks.
+- **APIM fronts the agent as a governed API** — the agent's runtime URL becomes the API backend,
+  and the API requires a **subscription key**, so callers authenticate to the gateway rather than
+  to the agent directly.
+- **APIM authenticates to the backend with its own managed identity** — an inbound policy mints a
+  backend token from APIM's managed identity (the token audience matches whatever the agent's
+  runtime expects), so callers never see the agent's credentials.
+- **Governance lives at the gateway** — a product + subscription scopes who may call the agent,
+  and policies add rate limiting and optional message logging (method, task id, correlation id) to
+  Application Insights. Streaming responses are logged as metadata only, to avoid breaking SSE.
+- **The backend can stay private** — because APIM reaches it over the VNet / a private endpoint,
+  the agent works even with public network access disabled.
 
 ---
 
@@ -284,7 +269,7 @@ Foundry hosted agent. The agent's tools come from the **APIM-published MCP**, no
 
 ### Key facts
 
-- **MCP server** (FastMCP-style) runs in **Container Apps**, fronted by APIM at `/hr-mcp/mcp`.
+- **MCP server** (FastAPI app implementing the MCP JSON-RPC protocol) runs in **Container Apps**, fronted by APIM at `/hr-mcp/mcp`.
 - **Tools:** `search_employees`, `get_employee_profile`, `recommend_learning_path`,
   `submit_pto_request`, `update_employee_skills`.
 - **Double authentication on every call** — the client sends *both*:
@@ -310,44 +295,14 @@ using **its own managed identity**:
 This is exactly the kind of agent that notebook 8 publishes over A2A — so an A2A peer can call it,
 and it in turn calls MCP tools, **all through APIM**.
 
-### MCP sequence (agent consuming tools)
-
-```mermaid
-sequenceDiagram
-    participant AG as Hosted agent (managed identity)
-    participant A as APIM (MCP API + product)
-    participant M as HR MCP server (Container Apps, private)
-    AG->>AG: Acquire fresh Entra token (app role Mcp.Invoke)
-    AG->>A: POST /hr-mcp/mcp (Bearer JWT + Ocp-Apim-Subscription-Key)
-    A->>A: validate-jwt (aud + scope/role) + subscription key + rate limit (5/30s)
-    A->>M: tools/call (private endpoint)
-    M-->>A: tool result
-    A-->>AG: tool result
-    Note over A: 6th call within 30s → HTTP 429 (Retry-After)
-```
-
 ---
 
 ## 5. End-to-end: A2A → agent → MCP
 
 Putting both legs together, a single request from a peer agent flows through **two governed hops**:
-
-```mermaid
-sequenceDiagram
-    participant P as Peer agent / client
-    participant A1 as APIM (A2A API)
-    participant AG as Foundry agent (private)
-    participant A2 as APIM (MCP API)
-    participant M as HR MCP server (private)
-    P->>A1: A2A message/send (subscription key)
-    A1->>AG: MI token (aud=ai.azure.com), private endpoint
-    AG->>A2: tools/call (fresh Entra JWT, app role Mcp.Invoke + sub key)
-    A2->>M: tools/call (private endpoint)
-    M-->>A2: result
-    A2-->>AG: result
-    AG-->>A1: A2A response (agent reply)
-    A1-->>P: A2A response
-```
+the peer calls the agent's A2A endpoint (subscription key), APIM forwards to the private Foundry
+agent with a managed-identity token, the agent calls its MCP tools through APIM (fresh Entra JWT
+with the `Mcp.Invoke` app role plus subscription key), and the result flows back out the same path.
 
 ---
 
@@ -447,9 +402,14 @@ governed meeting point in the middle, and the access contract is what each exter
 
 Citadel treats observability as a **built-in capability of the governance hub**, not something each
 team bolts on. Because every call is forced through APIM (private backends, no direct access), the
-gateway becomes a **single emission point** for telemetry. The apps and agents emit nothing
-themselves — APIM produces the telemetry and **fans it out through a pipeline of other Azure
-services**. The workshop's **Lab 4** is simply the *read* side of that same pipeline.
+gateway becomes the **single emission point for governance-grade telemetry** — traffic and **token
+usage** (token counts + model + calling product). The key consequence is that apps
+and agents **don't have to instrument themselves** to be observed and metered: APIM produces that
+telemetry *about* every call and **fans it out through a pipeline of other Azure services**. Apps
+and agents may still emit their *own* application traces
+(the hosted agent, for example, can export OTel/agent spans — see §7.4); those **complement** the
+gateway stream rather than replace it. The workshop's **Lab 4** is simply the *read* side of the
+gateway pipeline.
 
 ### 7.1 Two telemetry streams from one gateway
 
@@ -460,9 +420,9 @@ APIM is configured to produce **two independent streams**:
 | **A. Diagnostic** (synchronous, automatic) | APIM **diagnostic settings**; APIs have **"Log LLM messages"** enabled | APIM → **Log Analytics** (logs/metrics) and **Application Insights** (traces) | "Is the gateway healthy? volume, latency, errors, throttling, end-to-end trace" |
 | **B. Usage** (asynchronous, policy-driven) | The reusable **`set-llm-usage`** policy fragment captures token counts + model + calling product | APIM → **Event Hub** → **Logic App** → **Cosmos DB** | "Who consumed how many tokens, on which model, at what cost — per access contract" |
 
-Stream **B** is what makes Citadel's observability *governance-grade* rather than just APM: token
-and cost data are captured **at the gateway**, attributed to the **access contract** (APIM
-`productId`) that made the call, and shipped **off the hot path** so capturing them adds **zero
+Stream **B** is what makes Citadel's observability *governance-grade* rather than just APM: **token
+usage** is captured **at the gateway**, attributed to the **access contract** (APIM
+`productId`) that made the call, and shipped **off the hot path** so capturing it adds **zero
 latency** to inference.
 
 ```mermaid
@@ -490,7 +450,7 @@ Telemetry is **not** an APIM-only feature — it is a chain of services, each wi
 | **Logic App** (`llm-usage-ingestion`) | Consumes Event Hub and writes structured usage records into Cosmos DB |
 | **Cosmos DB** | `llm-usage-container` (per-call tokens, model, **product/contract**, timestamp) joined with `model-pricing` for **per-contract, per-model cost** |
 | **Power BI** (optional) | Dashboards over the Cosmos usage + pricing data |
-| **OpenTelemetry / AGT** (optional, agent layer) | The hosted-agent notebook adds OTel instrumentation for **agent-level** spans — complementary to the gateway telemetry above |
+| **AGT** (Microsoft Agent Governance Toolkit, optional agent layer) | The hosted-agent notebook governs the agent with AGT (policy, capability guard, audit trail, rogue detection) and emits AGT OpenTelemetry — `agt.policy.*` spans and `agt.audit.event` records — for **agent-level** governance, complementary to the gateway telemetry above |
 
 ### 7.3 How the workshop exercises it (Lab 4)
 
@@ -500,12 +460,14 @@ running notebooks 1–6 and *inspect* it across the three surfaces:
 
 - **APIM Analytics / Metrics / Logs** — Timeline, Subscriptions (per-contract), Language Models tab; KQL on `ApiManagementGatewayLogs`.
 - **Application Insights** — Application Map + Transaction Search for end-to-end traces.
-- **Cosmos usage** — manually **Run** the `llm-usage-ingestion` Logic App (in a short lab you don't wait for the schedule), import `model-pricing.json`, then query `llm-usage-container` for per-call tokens/model/product/cost.
+- **Cosmos usage** — manually **Run** the `llm-usage-ingestion` Logic App (in a short lab you don't wait for the schedule), then query `llm-usage-container` for per-call tokens/model/product.
 
-> **Scope note:** the streams above are **gateway / LLM telemetry** (requests, tokens, cost,
-> routing). They do **not** capture agent-framework internals (A2A turn spans, MCP tool-call
-> spans). For that, the optional hosted-agent notebook adds **OpenTelemetry / AGT** instrumentation
-> at the agent layer, which also lands in Application Insights.
+> **Scope note:** the streams above are **gateway / LLM telemetry** (requests, **token usage**,
+> routing). They do
+> **not** capture agent-framework internals (A2A turn spans, MCP tool-call
+> spans). For that, the optional hosted-agent notebook governs the agent with **AGT** (Microsoft
+> Agent Governance Toolkit) and emits its OpenTelemetry policy/audit signals at the agent layer,
+> which also land in Application Insights.
 
 ### 7.4 Routing telemetry to Datadog (or another SIEM/APM)
 
@@ -515,21 +477,19 @@ and **each plane has exactly one correct path to Datadog** — they are not inte
 | Plane | What it carries | Path to Datadog | Why this path |
 |---|---|---|---|
 | **Diagnostic plane** | APIM gateway **logs + platform metrics** (`ApiManagementGatewayLogs`, latency, 429s, etc.) | **Azure Native Datadog** ISV service | These are standard Azure Monitor categories, so the managed ISV integration forwards them automatically (it creates the diagnostic settings and gets *Monitoring Reader* for metrics). No Event Hub, no forwarder to run. |
-| **Usage / cost plane** | Per-call **token counts, model, calling product** emitted by `set-llm-usage` | **Event Hub → Datadog forwarder** (**required**) | This is a **custom application payload the policy publishes directly to Event Hub** — it is **not** an Azure Monitor log category, so Azure Native Datadog *cannot* see it. The Event Hub seam is the **only** way to get this stream into Datadog. |
+| **Usage plane** | Per-call **token counts, model, calling product** emitted by `set-llm-usage` | **Event Hub → Datadog forwarder** (**required**) | This is a **custom application payload the policy publishes directly to Event Hub** — it is **not** an Azure Monitor log category, so Azure Native Datadog *cannot* see it. The Event Hub seam is the **only** way to get this stream into Datadog. |
 | **Agent-span plane** | A2A turn / MCP tool-call **traces** | Agent-layer **OpenTelemetry** exporter (`ddtrace` / OTLP) | Spans originate in the hosted agent, not the gateway, so they're exported directly from the agent. |
 
 So the choice is **not** "Azure Native Datadog *or* Event Hub." You use **both, for different data**:
 Azure Native Datadog for the diagnostic plane (managed, includes metrics), and the **Event Hub seam
-for the usage plane** because nothing else can carry that custom token/cost stream.
+for the usage plane** because nothing else can carry that custom token stream.
 
 > **Note:** Azure Native Datadog can *also* be replaced by a manual *diagnostic settings → Event Hub →
 > forwarder* path if you specifically need to transform or route the diagnostic logs yourself — but
 > for the usage plane the Event Hub path is **mandatory**, not a preference.
 
 The key point: **keep the `set-llm-usage` policy fragment unchanged** — it already publishes to Event
-Hub. You only add a parallel consumer. The one tradeoff is the `model-pricing` join (today done in
-Cosmos to compute per-contract cost): to get cost in Datadog you either replicate that lookup in the
-forwarder or attach unit prices as tags so Datadog computes cost itself.
+Hub. You only add a parallel consumer.
 
 ```mermaid
 flowchart LR
@@ -543,7 +503,7 @@ flowchart LR
     APIM == "set-llm-usage fragment<br/>(custom payload)" ==> EHu["Event Hub<br/>(usage)"]
     EHu == "REQUIRED path" ==> FWD["Datadog forwarder /<br/>custom-metrics consumer"]
     FWD --> DD
-    EHu -. "optional, kept for<br/>per-contract cost" .-> LG["Logic App"] -.-> CD[("Cosmos DB<br/>usage + pricing")]
+    EHu -. "optional, kept for<br/>usage history" .-> LG["Logic App"] -.-> CD[("Cosmos DB<br/>usage")]
 
     %% Agent-span plane -> OTel
     AG["Hosted agent<br/>(OTel exporter)"] -- "ddtrace / OTLP" --> DD
