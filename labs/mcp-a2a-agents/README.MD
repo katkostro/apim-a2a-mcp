@@ -31,6 +31,28 @@ MCP-enabled agents are then deployed within ACA (Azure Container Apps) as A2A ag
 
 This lab demonstrates the art of the possible of creating a multi-agentic system with agents orchestrated using Microsoft Agent Framework, and then allowing a single unifying protocol to communicate across them through APIM for Authn/Authz
 
+### 🧭 MCP vs A2A — when and why
+
+MCP and A2A are **complementary**, not competing. They solve two different problems:
+
+- **MCP (Model Context Protocol)** connects *an agent* **down** to its **tools, data, and actions**. The other side is a tool that does what it's told (get weather, query a DB, call an API).
+- **A2A (Agent-to-Agent)** connects *one agent* **across** to **another autonomous agent**. The other side is a peer that reasons, plans, and has its *own* tools.
+
+```mermaid
+flowchart TB
+    A1["Weather Agent"] <-->|A2A: agent ↔ agent| A2["Oncall Agent"]
+    A1 -->|MCP: agent ↔ tools| T1["weather tools"]
+    A2 -->|MCP: agent ↔ tools| T2["oncall tools"]
+```
+
+| If you need… | Use |
+|---|---|
+| Your agent to *do* something (call an API, fetch data) | **MCP** |
+| Your agent to hand part of a job to *another agent* | **A2A** |
+| Specialist agents (each with their own tools) to collaborate | **A2A on top of MCP** |
+
+In this lab both layers are used together: the **weather/oncall MCP servers** are pure tools (MCP), and the **agents** consume those tools over MCP while exposing themselves to other agents/clients over A2A (or as MCP servers under an orchestrator). APIM sits in the middle of every hop for authentication, rate limiting, and observability.
+
 ### Prerequisites
 
 - [Python 3.13 or later](https://www.python.org/) installed
@@ -61,6 +83,85 @@ Pick one (or both) of the following labs. Each one reads the deployment outputs 
 
 - **A2A Protocol lab** — [mcp-agent-as-a2a-server.ipynb](mcp-agent-as-a2a-server.ipynb): deploys two A2A agents (both built with **Microsoft Agent Framework**) and exercises agent-to-agent communication over the A2A protocol, including a CLI client.
 - **Agent-over-MCP lab** — [mcp-agent-as-mcp-server.ipynb](mcp-agent-as-mcp-server.ipynb): exposes the MCP-enabled agents as MCP servers and has them communicate agent-to-agent over MCP.
+
+### 🏗️ How the deployment works
+
+The lab uses a **two-phase "provision-then-swap"** pattern. Bicep ([main.bicep](main.bicep)) creates every Container App with a public **placeholder image** (`docker.io/jfxs/hello-world:latest`), and the notebooks later swap in the real images.
+
+Why a placeholder? A Container App can't be created without a valid, pullable image — but the real images don't exist yet at Bicep run time, because the Container Registry is created *by* Bicep. So a public throwaway image satisfies the requirement at creation; the notebooks then build the real images with `az acr build` and swap them in with `az containerapp update` — cheaply and repeatedly, without re-running Bicep.
+
+```mermaid
+flowchart TB
+    subgraph P1["🟦 STEP 1 — Provision infrastructure (main.bicep)"]
+        direction TB
+        BICEP["az deployment / Bicep run"]
+        ACR["Azure Container Registry<br/>(created empty)"]
+        APIM["API Management"]
+        AOAI["Azure OpenAI"]
+        OBS["Log Analytics + App Insights"]
+        ENV["Container Apps Environment"]
+
+        BICEP --> ACR
+        BICEP --> APIM
+        BICEP --> AOAI
+        BICEP --> OBS
+        BICEP --> ENV
+
+        subgraph SHELLS["Container App shells — all created with placeholder image<br/>docker.io/jfxs/hello-world:latest"]
+            direction LR
+            CA_W["weather-mcp-server"]
+            CA_O["oncall-mcp-server"]
+            CA_A2A["A2A agent apps<br/>(weather / oncall)"]
+            CA_MCP["MCP agent apps<br/>(weather / oncall)"]
+        end
+        BICEP --> SHELLS
+    end
+
+    subgraph P2["🟩 STEP 1 notebook — fill in the SHARED tool servers"]
+        direction TB
+        B1["az acr build → weather-mcp-server:v0.x"]
+        B2["az acr build → oncall-mcp-server:v0.x"]
+        U1["az containerapp update<br/>swap placeholder → real image"]
+        B1 --> U1
+        B2 --> U1
+    end
+
+    subgraph P3["🟨 STEP 2 lab(s) — fill in the agents YOU choose"]
+        direction TB
+        LAB1["A2A Protocol lab<br/>build + deploy A2A agent images"]
+        LAB2["Agent-over-MCP lab<br/>build + deploy MCP agent images"]
+    end
+
+    ACR -. "registry must exist<br/>before images can be pushed" .-> B1
+    ACR -. .-> B2
+    U1 ==>|real image| CA_W
+    U1 ==>|real image| CA_O
+    LAB1 ==>|real image| CA_A2A
+    LAB2 ==>|real image| CA_MCP
+
+    P1 --> P2 --> P3
+```
+
+Per-app lifecycle for any single Container App:
+
+```mermaid
+sequenceDiagram
+    participant Bicep
+    participant ACR as Container Registry
+    participant CA as Container App
+    participant NB as Notebook (az CLI)
+
+    Note over Bicep,CA: Phase 1 — provision (image doesn't exist yet)
+    Bicep->>ACR: create registry (empty)
+    Bicep->>CA: create app with image = hello-world<br/>(valid + pullable, so creation succeeds)
+    Note over CA: app exists with real config<br/>(env vars, identity, ingress, APIM wiring)<br/>running throwaway hello-world
+
+    Note over NB,CA: Phase 2 — deploy real code
+    NB->>ACR: az acr build → push weather-mcp-server:v0.1
+    NB->>CA: az containerapp update --image .../weather-mcp-server:v0.1
+    CA->>ACR: pull real image (now it exists!)
+    Note over CA: app now runs the real MCP server
+```
 
 #### Step 3 — (optional) Debug with MCP Inspector
 
