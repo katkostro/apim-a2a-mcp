@@ -212,7 +212,7 @@ the enforceable **access contract** for that agent or tool.
 | Connects | agent ↔ agent (horizontal) | agent → tools (vertical) |
 | Other side is | an autonomous reasoning peer | a tool server that executes commands |
 | Caller | another agent / client app | an agent that needs to *do* something |
-| APIM auth | sub key + JWT, MI token to backend | sub key + JWT + `Mcp.Invoke` role |
+| APIM auth | sub key inbound, MI token to backend | sub key + JWT + `Mcp.Invoke` role |
 
 They are kept as **separate API types** because they govern **different trust relationships and
 different authorization rules**. That separation is exactly what lets APIM say "Agent A may call
@@ -280,6 +280,24 @@ Foundry hosted agent. The agent's tools come from the **APIM-published MCP**, no
   enforcing **5 `tools/call` per 30 seconds → HTTP 429** (demonstrated explicitly in the notebook).
 - **Bounded logging** — request/response snippets are logged with an explicit rule that **bearer
   tokens and subscription keys must not be logged**.
+
+### Call sequence
+
+```mermaid
+sequenceDiagram
+    participant Client as Agent / client
+    participant APIM as APIM (MCP API)<br/>/hr-mcp/mcp
+    participant MCP as HR MCP server<br/>(Container Apps, private)
+    Client->>APIM: tools/call<br/>Authorization: Bearer JWT<br/>Ocp-Apim-Subscription-Key
+    APIM->>APIM: validate JWT (audience + scope/role)<br/>validate sub key<br/>rate limit 5 tools/call / 30s
+    alt over limit
+        APIM-->>Client: HTTP 429
+    else allowed
+        APIM->>MCP: forward tools/call over VNet
+        MCP-->>APIM: tool result
+        APIM-->>Client: tool result<br/>(snippets logged; no tokens/keys)
+    end
+```
 
 ### The A2A ↔ MCP join (notebook 9, step 10)
 
@@ -556,7 +574,7 @@ and operationalize it for your own environment.
 | Concern | Citadel approach | Production-ready? |
 |---|---|---|
 | Network exposure | Backends are **private** (private endpoints + VNet); only APIM is reachable | ✅ Yes — correct trust-boundary design |
-| Authn (client → gateway) | **JWT validation** (Entra) + **subscription keys** on MCP/A2A | ✅ Yes |
+| Authn (client → gateway) | **JWT validation** (Entra, MCP leg) + **subscription keys** (MCP & A2A) | ✅ Yes |
 | Authz | App roles (`Mcp.Invoke`), `validate-jwt` audience/role checks | ✅ Yes |
 | Backend auth | APIM → AI Foundry / agent via **managed identity** (`authentication-managed-identity`) | ✅ Yes — no secrets in transit |
 | Rate limiting / abuse | `rate-limit` per subscription (e.g. 3/60s A2A, 5/30s MCP) | ✅ Pattern is right (values are demo-sized) |
@@ -597,6 +615,7 @@ and operationalize it for your own environment.
 - Import an A2A agent API (APIM) —
   <https://learn.microsoft.com/azure/api-management/agent-to-agent-api>
 - Model Context Protocol — <https://modelcontextprotocol.io>
+- Microsoft Agent Governance Toolkit (AGT) — <https://microsoft.github.io/agent-governance-toolkit/>
 - Preventing Cross-Subscription Access (OpenAI ResponsesAPI) - <https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/blob/citadel-v1/guides/llm-access-guide.md#step-15-responses-api-id-security-responses-id-security--responses-id-cache-store>
 - Citadel source repo (`ai-hub-gateway-solution-accelerator`, `workshop` branch) —
   <https://github.com/mohamedsaif/ai-hub-gateway-solution-accelerator/tree/workshop/workshop>
